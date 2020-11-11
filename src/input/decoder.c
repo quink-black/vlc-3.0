@@ -119,6 +119,9 @@ struct decoder_owner_sys_t
 
     bool error;
 
+    /* decode but drop the output */
+    bool drop;
+
     /* Waiting */
     bool b_waiting;
     bool b_first;
@@ -1132,6 +1135,7 @@ static int DecoderPlayAudio( decoder_t *p_dec, block_t *p_audio,
 {
     decoder_owner_sys_t *p_owner = p_dec->p_owner;
     bool prerolled;
+    bool drop;
 
     assert( p_audio != NULL );
 
@@ -1143,6 +1147,7 @@ static int DecoderPlayAudio( decoder_t *p_dec, block_t *p_audio,
         return -1;
     }
 
+    drop = p_owner->drop;
     prerolled = p_owner->i_preroll_end > INT64_MIN;
     p_owner->i_preroll_end = INT64_MIN;
     vlc_mutex_unlock( &p_owner->lock );
@@ -1185,7 +1190,8 @@ static int DecoderPlayAudio( decoder_t *p_dec, block_t *p_audio,
     if( p_aout != NULL && p_audio->i_pts > VLC_TS_INVALID
      && i_rate >= INPUT_RATE_DEFAULT/AOUT_MAX_INPUT_RATE
      && i_rate <= INPUT_RATE_DEFAULT*AOUT_MAX_INPUT_RATE
-     && !DecoderTimedWait( p_dec, p_audio->i_pts - AOUT_MAX_PREPARE_TIME ) )
+     && !DecoderTimedWait( p_dec, p_audio->i_pts - AOUT_MAX_PREPARE_TIME )
+     && !drop )
     {
         int status = aout_DecPlay( p_aout, p_audio, i_rate );
         if( status == AOUT_DEC_CHANGED )
@@ -1203,8 +1209,11 @@ static int DecoderPlayAudio( decoder_t *p_dec, block_t *p_audio,
     }
     else
     {
-        msg_Dbg( p_dec, "discarded audio buffer" );
-        *pi_lost_sum += 1;
+        if( !drop ) {
+            // 非主动丢弃
+            msg_Warn( p_dec, "discarded audio buffer" );
+            *pi_lost_sum += 1;
+        }
         block_Release( p_audio );
     }
     return 0;
@@ -1694,6 +1703,8 @@ static decoder_t * CreateDecoder( vlc_object_t *p_parent,
     p_owner->b_has_data = false;
 
     p_owner->error = false;
+
+    p_owner->drop = false;
 
     p_owner->flushing = false;
     p_owner->b_draining = false;
@@ -2385,4 +2396,26 @@ void input_DecoderGetObjects( decoder_t *p_dec,
     if( pp_aout )
         *pp_aout = p_owner->p_aout ? vlc_object_hold( p_owner->p_aout ) : NULL;
     vlc_mutex_unlock( &p_owner->lock );
+}
+
+void input_DecoderSetDrop( decoder_t *p_dec, bool b_drop ) {
+    decoder_owner_sys_t *p_owner = p_dec->p_owner;
+    vlc_mutex_lock( &p_owner->lock );
+    p_owner->drop = b_drop;
+    /*
+    if (b_drop && p_owner->p_aout)
+    {
+        aout_DecFlush( p_owner->p_aout, false );
+    }
+    */
+    vlc_mutex_unlock( &p_owner->lock );
+}
+
+bool input_DecoderGetDrop( decoder_t *p_dec ) {
+    bool drop;
+    decoder_owner_sys_t *p_owner = p_dec->p_owner;
+    vlc_mutex_lock( &p_owner->lock );
+    drop = p_owner->drop;
+    vlc_mutex_unlock( &p_owner->lock );
+    return drop;
 }

@@ -649,6 +649,8 @@ VLC_API void input_DecoderDelete( decoder_t * );
 VLC_API void input_DecoderDecode( decoder_t *, block_t *, bool b_do_pace );
 VLC_API void input_DecoderDrain( decoder_t * );
 VLC_API void input_DecoderFlush( decoder_t * );
+VLC_API void input_DecoderSetDrop( decoder_t *, bool b_drop );
+VLC_API bool input_DecoderGetDrop( decoder_t * );
 
 /**
  * This function creates a sane filename path.

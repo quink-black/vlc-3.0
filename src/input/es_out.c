@@ -1679,9 +1679,36 @@ static bool EsIsSelected( es_out_id_t *es )
     }
     else
     {
+        return es->p_dec != NULL && !input_DecoderGetDrop( es->p_dec );
+    }
+}
+
+static bool EsIsSelectedForDemux( es_out_id_t *es )
+{
+    if( es->fmt.i_cat == AUDIO_ES )
+        return true;
+    return EsIsSelected( es );
+}
+
+static bool EsHasDecoder( es_out_id_t *es )
+{
+    if( es->p_master )
+    {
+        bool b_decode = false;
+        if( es->p_master->p_dec )
+        {
+            int i_channel = EsOutGetClosedCaptionsChannel( &es->fmt );
+            input_DecoderGetCcState( es->p_master->p_dec, es->fmt.i_codec,
+                                     i_channel, &b_decode );
+        }
+        return b_decode;
+    }
+    else
+    {
         return es->p_dec != NULL;
     }
 }
+
 static void EsCreateDecoder( es_out_t *out, es_out_id_t *p_es )
 {
     es_out_sys_t   *p_sys = out->p_sys;
@@ -1718,6 +1745,13 @@ static void EsDestroyDecoder( es_out_t *out, es_out_id_t *p_es )
         input_DecoderDelete( p_es->p_dec_record );
         p_es->p_dec_record = NULL;
     }
+}
+
+static void EsSetDecoderDrop( es_out_id_t *p_es, bool drop )
+{
+    if( !p_es->p_dec )
+        return;
+    input_DecoderSetDrop( p_es->p_dec, drop );
 }
 
 static void EsSelect( es_out_t *out, es_out_id_t *es )
@@ -1775,7 +1809,10 @@ static void EsSelect( es_out_t *out, es_out_id_t *es )
             }
         }
 
-        EsCreateDecoder( out, es );
+        if( es->p_dec )
+            EsSetDecoderDrop( es, false );
+        else
+            EsCreateDecoder( out, es );
 
         if( es->p_dec == NULL || es->p_pgrm != p_sys->p_pgrm )
             return;
@@ -1814,6 +1851,42 @@ static void EsDeleteCCChannels( es_out_t *out, es_out_id_t *parent )
     parent->cc.type = 0;
 }
 
+static void EsDeleteDecoder( es_out_t *out, es_out_id_t *es, bool b_update )
+{
+    es_out_sys_t   *p_sys = out->p_sys;
+    input_thread_t *p_input = p_sys->p_input;
+
+    if( !EsHasDecoder( es ) )
+    {
+        msg_Warn( p_input, "ES 0x%x doesn't have decoder", es->i_id );
+        return;
+    }
+
+    if( es->p_master )
+    {
+        if( es->p_master->p_dec )
+        {
+            int i_channel = EsOutGetClosedCaptionsChannel( &es->fmt );
+            if( i_channel != -1 )
+                input_DecoderSetCcState( es->p_master->p_dec, es->fmt.i_codec,
+                                         i_channel, false );
+        }
+    }
+    else
+    {
+        EsDeleteCCChannels( out, es );
+        EsDestroyDecoder( out, es );
+    }
+
+    if( !b_update )
+        return;
+
+    /* Mark it as unselected */
+    input_SendEventEsSelect( p_input, es->fmt.i_cat, -1 );
+    if( EsFmtIsTeletext( &es->fmt ) )
+        input_SendEventTeletextSelect( p_input, -1 );
+}
+
 static void EsUnselect( es_out_t *out, es_out_id_t *es, bool b_update )
 {
     es_out_sys_t   *p_sys = out->p_sys;
@@ -1837,8 +1910,14 @@ static void EsUnselect( es_out_t *out, es_out_id_t *es, bool b_update )
     }
     else
     {
-        EsDeleteCCChannels( out, es );
-        EsDestroyDecoder( out, es );
+        if( es->fmt.i_cat == AUDIO_ES )
+        {
+            EsSetDecoderDrop( es, true );
+        } else
+        {
+            EsDeleteCCChannels( out, es );
+            EsDestroyDecoder( out, es );
+        }
     }
 
     if( !b_update )
@@ -1977,6 +2056,12 @@ static void EsOutSelect( es_out_t *out, es_out_id_t *es, bool b_force )
         }
         else if( p_esprops->p_main_es == NULL ||
                  es->fmt.i_priority > p_esprops->p_main_es->fmt.i_priority )
+        {
+            if( p_esprops->b_autoselect )
+                wanted_es = es;
+        }
+        /* create decoder for all audio tracks */
+        else if( es->fmt.i_cat == AUDIO_ES )
         {
             if( p_esprops->b_autoselect )
                 wanted_es = es;
@@ -2175,7 +2260,7 @@ static void EsOutDel( es_out_t *out, es_out_id_t *es )
              * a problem when another codec of the same type is created (mainly video) */
             msleep( 20*1000 );
         }
-        EsUnselect( out, es, es->p_pgrm == p_sys->p_pgrm );
+        EsDeleteDecoder( out, es, es->p_pgrm == p_sys->p_pgrm );
     }
 
     if( es->p_pgrm == p_sys->p_pgrm )
@@ -2269,7 +2354,7 @@ static int EsOutControlLocked( es_out_t *out, int i_query, va_list args )
         es_out_id_t *es = va_arg( args, es_out_id_t * );
         bool *pb = va_arg( args, bool * );
 
-        *pb = EsIsSelected( es );
+        *pb = EsIsSelectedForDemux( es );
         return VLC_SUCCESS;
     }
 
