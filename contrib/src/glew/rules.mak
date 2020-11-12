@@ -20,7 +20,7 @@ endif
 
 .glew: glew
 	cd $< && $(HOSTVARS) CFLAGS="$(CFLAGS) -DGLEW_STATIC" $(MAKE)
-	cd $< && $(HOSTVARS) GLEW_DEST=$(PREFIX) $(MAKE) install
+	cd $< && $(HOSTVARS) GLEW_DEST=$(PREFIX) $(CMAKEBUILD) . --target install
 ifdef HAVE_WIN32
 	-rm $(PREFIX)/lib/*glew32.dll*
 endif
