@@ -475,6 +475,23 @@ int libvlc_audio_set_channel( libvlc_media_player_t *mp, int channel )
     return ret;
 }
 
+int libvlc_audio_set_pitch_shift( libvlc_media_player_t *mp, float pitch )
+{
+    audio_output_t *p_aout = GetAOut( mp );
+    int ret = 0;
+
+    if( !p_aout )
+        return -1;
+
+    if( var_SetFloat( p_aout, "pitch-shift", pitch ) < 0 )
+    {
+        libvlc_printerr( "Audio pitch-shift out of range" );
+        ret = -1;
+    }
+    vlc_object_release( p_aout );
+    return ret;
+}
+
 /*****************************************************************************
  * libvlc_audio_get_delay : Get the current audio delay
  *****************************************************************************/

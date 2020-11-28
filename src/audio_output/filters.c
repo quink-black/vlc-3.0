@@ -593,6 +593,9 @@ aout_filters_t *aout_FiltersNew (vlc_object_t *obj,
         if (AppendFilter(obj, "audio filter", "scaletempo",
                          filters, NULL, &input_format, &output_format, NULL) == 0)
             filters->rate_filter = filters->tab[filters->count - 1];
+        if (AppendFilter(obj, "audio filter", "scaletempo_pitch",
+                         filters, NULL, &input_format, &output_format, NULL) != 0)
+            msg_Err (obj, "cannot find scaletempo_pitch");
     }
 
     if (cfg != NULL)

@@ -314,6 +314,8 @@ audio_output_t *aout_New (vlc_object_t *parent)
     text.psz_string = _("Audio filters");
     var_Change (aout, "audio-filter", VLC_VAR_SETTEXT, &text, NULL);
 
+    var_Create (aout, "pitch-shift", VLC_VAR_FLOAT | VLC_VAR_DOINHERIT);
+
     var_Create (aout, "viewpoint", VLC_VAR_ADDRESS );
     var_AddCallback (aout, "viewpoint", ViewpointCallback, NULL);
 

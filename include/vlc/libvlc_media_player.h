@@ -1858,6 +1858,8 @@ LIBVLC_API int libvlc_audio_get_channel( libvlc_media_player_t *p_mi );
  */
 LIBVLC_API int libvlc_audio_set_channel( libvlc_media_player_t *p_mi, int channel );
 
+LIBVLC_API int libvlc_audio_set_pitch_shift( libvlc_media_player_t *p_mi, float pitch );
+
 /**
  * Get current audio delay.
  *
