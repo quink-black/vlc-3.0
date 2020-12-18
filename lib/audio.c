@@ -56,6 +56,23 @@ static audio_output_t *GetAOut( libvlc_media_player_t *mp )
     return p_aout;
 }
 
+static audio_output_t **GetAllAOut( libvlc_media_player_t *mp )
+{
+    assert( mp != NULL );
+
+    audio_output_t **p_aout = input_resource_HoldAllAout( mp->input.p_resource );
+    return p_aout;
+}
+
+static void ReleaseAllAOut( audio_output_t **aout )
+{
+    for( unsigned i = 0; i < AOUT_MAX_SIZE; i++ )
+    {
+        if( aout[i] != NULL )
+            vlc_object_release( aout[i] );
+    }
+}
+
 /*****************************************
  * Get the list of available audio outputs
  *****************************************/
@@ -275,12 +292,13 @@ void libvlc_audio_output_device_set( libvlc_media_player_t *mp,
         return;
     }
 
-    audio_output_t *aout = GetAOut( mp );
-    if( aout == NULL )
-        return;
-
-    aout_DeviceSet( aout, devid );
-    vlc_object_release( aout );
+    audio_output_t **aout = GetAllAOut( mp );
+    for( unsigned i = 0; i < AOUT_MAX_SIZE; i++ )
+    {
+        if( aout[i] != NULL )
+            aout_DeviceSet( aout[i], devid );
+    }
+    ReleaseAllAOut( aout );
 }
 
 char *libvlc_audio_output_device_get( libvlc_media_player_t *mp )
@@ -330,12 +348,15 @@ int libvlc_audio_get_mute( libvlc_media_player_t *mp )
 
 void libvlc_audio_set_mute( libvlc_media_player_t *mp, int mute )
 {
-    audio_output_t *aout = GetAOut( mp );
-    if( aout != NULL )
+    audio_output_t **aout = GetAllAOut( mp );
+    for(unsigned i = 0; i < AOUT_MAX_SIZE; i++)
     {
-        mute = aout_MuteSet( aout, mute );
-        vlc_object_release( aout );
+        if( aout[i] != NULL )
+        {
+            mute = aout_MuteSet( aout[i], mute );
+        }
     }
+    ReleaseAllAOut(aout);
 }
 
 int libvlc_audio_get_volume( libvlc_media_player_t *mp )
@@ -362,12 +383,15 @@ int libvlc_audio_set_volume( libvlc_media_player_t *mp, int volume )
     }
 
     int ret = -1;
-    audio_output_t *aout = GetAOut( mp );
-    if( aout != NULL )
+    audio_output_t **aout = GetAllAOut( mp );
+    for(unsigned i = 0; i < AOUT_MAX_SIZE; i++)
     {
-        ret = aout_VolumeSet( aout, vol );
-        vlc_object_release( aout );
+        if( aout[i] != NULL )
+        {
+            ret = aout_VolumeSet( aout[i], vol );
+        }
     }
+    ReleaseAllAOut(aout);
     return ret;
 }
 
@@ -460,35 +484,49 @@ int libvlc_audio_get_channel( libvlc_media_player_t *mp )
  *****************************************************************************/
 int libvlc_audio_set_channel( libvlc_media_player_t *mp, int channel )
 {
-    audio_output_t *p_aout = GetAOut( mp );
-    int ret = 0;
+    int ret = -1;
 
-    if( !p_aout )
-        return -1;
-
-    if( var_SetInteger( p_aout, "stereo-mode", channel ) < 0 )
+    audio_output_t **p_aout = GetAllAOut( mp );
+    for( unsigned i = 0; i < AOUT_MAX_SIZE; i++ )
     {
-        libvlc_printerr( "Audio channel out of range" );
-        ret = -1;
+        if( p_aout[i] != NULL )
+        {
+            if( var_SetInteger( p_aout[i], "stereo-mode", channel ) < 0 )
+            {
+                libvlc_printerr( "Audio channel out of range" );
+                ret = -1;
+            }
+            else
+            {
+                ret = 0;
+            }
+        }
     }
-    vlc_object_release( p_aout );
+    ReleaseAllAOut( p_aout );
     return ret;
 }
 
 int libvlc_audio_set_pitch_shift( libvlc_media_player_t *mp, float pitch )
 {
-    audio_output_t *p_aout = GetAOut( mp );
-    int ret = 0;
+    int ret = -1;
 
-    if( !p_aout )
-        return -1;
-
-    if( var_SetFloat( p_aout, "pitch-shift", pitch ) < 0 )
+    audio_output_t **p_aout = GetAllAOut( mp );
+    for( unsigned i = 0; i < AOUT_MAX_SIZE; i++ )
     {
-        libvlc_printerr( "Audio pitch-shift out of range" );
-        ret = -1;
+        if( p_aout[i] != NULL )
+        {
+            if( var_SetFloat( p_aout[i], "pitch-shift", pitch ) < 0 )
+            {
+                libvlc_printerr( "Audio pitch-shift out of range" );
+                ret = -1;
+            }
+            else
+            {
+                ret = 0;
+            }
+        }
     }
-    vlc_object_release( p_aout );
+    ReleaseAllAOut( p_aout );
     return ret;
 }
 

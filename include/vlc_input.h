@@ -680,11 +680,15 @@ VLC_API void input_resource_TerminateVout( input_resource_t * );
  */
 VLC_API void input_resource_Terminate( input_resource_t * );
 
+#define AOUT_MAX_SIZE 32
+
 /**
  * \return the current audio output if any.
  * Use vlc_object_release() to drop the reference.
  */
 VLC_API audio_output_t *input_resource_HoldAout( input_resource_t * );
+
+VLC_API audio_output_t **input_resource_HoldAllAout( input_resource_t * );
 
 /**
  * This function creates or recycles an audio output.

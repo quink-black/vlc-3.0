@@ -71,8 +71,8 @@ struct input_resource_t
     vout_thread_t   **pp_vout;
     int             i_vout;
 
-    bool            b_aout_busy;
-    audio_output_t *p_aout;
+    bool            b_aout_busy[AOUT_MAX_SIZE];
+    audio_output_t *pp_aout[AOUT_MAX_SIZE];
 };
 
 /* */
@@ -338,29 +338,53 @@ audio_output_t *input_resource_GetAout( input_resource_t *p_resource )
     audio_output_t *p_aout;
 
     vlc_mutex_lock( &p_resource->lock_hold );
-    p_aout = p_resource->p_aout;
-
-    if( p_aout == NULL || p_resource->b_aout_busy )
+    for( unsigned i = 0; i < AOUT_MAX_SIZE; i++ )
     {
-        msg_Dbg( p_resource->p_parent, "creating audio output" );
-        vlc_mutex_unlock( &p_resource->lock_hold );
+        p_aout = p_resource->pp_aout[i];
+        if( p_aout != NULL )
+        {
+            if( !p_resource->b_aout_busy[i] )
+            {
+                msg_Dbg( p_resource->p_parent, "reusing audio output" );
+                p_resource->b_aout_busy[i] = true;
+                break;
+            }
+            else
+            {
+                msg_Dbg( p_resource->p_parent, "cannot reuse audio output %p, busy", p_aout );
+            }
+        }
+        else
+        {
+            msg_Dbg( p_resource->p_parent, "creating audio output" );
+            vlc_mutex_unlock( &p_resource->lock_hold );
 
-        p_aout = aout_New( p_resource->p_parent );
-        if( p_aout == NULL )
-            return NULL; /* failed */
+            p_aout = aout_New( p_resource->p_parent );
+            if( p_aout == NULL )
+                return NULL; /* failed */
 
-        vlc_mutex_lock( &p_resource->lock_hold );
-        if( p_resource->p_aout == NULL )
-            p_resource->p_aout = p_aout;
+            vlc_mutex_lock( &p_resource->lock_hold );
+            if( p_resource->pp_aout[i] == NULL )
+            {
+                p_resource->pp_aout[i] = p_aout;
+            }
+            else
+            {
+                // race condition
+                msg_Warn( p_resource->p_parent, "audio output out of control");
+            }
+            break;
+        }
     }
-    else
-        msg_Dbg( p_resource->p_parent, "reusing audio output" );
 
-    if( p_resource->p_aout == p_aout )
+    int count = 0;
+    for( unsigned i = 0; i < AOUT_MAX_SIZE; i++ )
     {
-        assert( !p_resource->b_aout_busy );
-        p_resource->b_aout_busy = true;
+        if( p_resource->pp_aout[i] != NULL )
+            count++;
     }
+    msg_Dbg( p_resource->p_parent,
+            "input_resource_GetAout, %d audio output", count );
     vlc_mutex_unlock( &p_resource->lock_hold );
     return p_aout;
 }
@@ -371,19 +395,23 @@ void input_resource_PutAout( input_resource_t *p_resource,
     assert( p_aout != NULL );
 
     vlc_mutex_lock( &p_resource->lock_hold );
-    if( p_aout == p_resource->p_aout )
-    {
-        assert( p_resource->b_aout_busy );
-        p_resource->b_aout_busy = false;
-        msg_Dbg( p_resource->p_parent, "keeping audio output" );
-        p_aout = NULL;
+    for( unsigned i = 0; i < AOUT_MAX_SIZE; i++) {
+        if( p_aout == p_resource->pp_aout[i] )
+        {
+            assert( p_resource->b_aout_busy );
+            p_resource->b_aout_busy[i] = false;
+            msg_Dbg( p_resource->p_parent, "keeping audio output" );
+            p_aout = NULL;
+            break;
+        }
     }
-    else
-        msg_Dbg( p_resource->p_parent, "destroying extra audio output" );
     vlc_mutex_unlock( &p_resource->lock_hold );
 
     if( p_aout != NULL )
+    {
+        msg_Dbg( p_resource->p_parent, "destroying extra audio output" );
         aout_Destroy( p_aout );
+    }
 }
 
 audio_output_t *input_resource_HoldAout( input_resource_t *p_resource )
@@ -391,7 +419,7 @@ audio_output_t *input_resource_HoldAout( input_resource_t *p_resource )
     audio_output_t *p_aout;
 
     vlc_mutex_lock( &p_resource->lock_hold );
-    p_aout = p_resource->p_aout;
+    p_aout = p_resource->pp_aout[0];
     if( p_aout != NULL )
         vlc_object_hold( p_aout );
     vlc_mutex_unlock( &p_resource->lock_hold );
@@ -399,20 +427,54 @@ audio_output_t *input_resource_HoldAout( input_resource_t *p_resource )
     return p_aout;
 }
 
+audio_output_t **input_resource_HoldAllAout( input_resource_t *p_resource )
+{
+    audio_output_t **pp_aout;
+
+    vlc_mutex_lock( &p_resource->lock_hold );
+    pp_aout = p_resource->pp_aout;
+    int count = 0;
+    for( unsigned i = 0; i < AOUT_MAX_SIZE; i++ )
+    {
+        if( pp_aout[i] != NULL )
+        {
+            count++;
+            vlc_object_hold( pp_aout[i] );
+        }
+    }
+    vlc_mutex_unlock( &p_resource->lock_hold );
+    msg_Dbg( p_resource->p_parent,
+            "input_resource_HoldAllAout, %d audio output", count);
+
+    return pp_aout;
+}
+
 void input_resource_ResetAout( input_resource_t *p_resource )
 {
     audio_output_t *p_aout = NULL;
 
     vlc_mutex_lock( &p_resource->lock_hold );
-    if( !p_resource->b_aout_busy )
-        p_aout = p_resource->p_aout;
+    int count = 0;
+    for( unsigned i = 0; i < AOUT_MAX_SIZE; i++ )
+    {
+        if( !p_resource->b_aout_busy[i] )
+            p_aout = p_resource->pp_aout[i];
+        else
+            p_aout = NULL;
 
-    p_resource->p_aout = NULL;
-    p_resource->b_aout_busy = false;
+        p_resource->pp_aout[i] = NULL;
+        p_resource->b_aout_busy[i] = false;
+        if( p_aout != NULL )
+        {
+            count++;
+            vlc_mutex_unlock( &p_resource->lock_hold );
+            aout_Destroy( p_aout );
+            vlc_mutex_lock( &p_resource->lock_hold );
+        }
+    }
     vlc_mutex_unlock( &p_resource->lock_hold );
-
-    if( p_aout != NULL )
-        aout_Destroy( p_aout );
+    msg_Dbg( p_resource->p_parent,
+            "input_resource_ResetAout, destroy %d audio output", count );
 }
 
 /* Common */
@@ -434,10 +496,20 @@ void input_resource_Release( input_resource_t *p_resource )
     if( atomic_fetch_sub( &p_resource->refs, 1 ) != 1 )
         return;
 
+    msg_Dbg( p_resource->p_parent, "input_resource_Release" );
     DestroySout( p_resource );
     DestroyVout( p_resource );
-    if( p_resource->p_aout != NULL )
-        aout_Destroy( p_resource->p_aout );
+    int count = 0;
+    for( unsigned i = 0; i < AOUT_MAX_SIZE; i++)
+    {
+        if( p_resource->pp_aout[i] != NULL )
+        {
+            count++;
+            aout_Destroy( p_resource->pp_aout[i] );
+        }
+    }
+    msg_Dbg( p_resource->p_parent,
+            "input_resource_Release, destroy %d audio output", count );
 
     vlc_mutex_destroy( &p_resource->lock_hold );
     vlc_mutex_destroy( &p_resource->lock );
@@ -519,4 +591,3 @@ void input_resource_Terminate( input_resource_t *p_resource )
     input_resource_ResetAout( p_resource );
     input_resource_TerminateVout( p_resource );
 }
-

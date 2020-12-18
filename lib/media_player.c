@@ -2041,17 +2041,20 @@ int libvlc_media_player_set_equalizer( libvlc_media_player_t *p_mi, libvlc_equal
     }
     var_SetString( p_mi, "audio-filter", p_equalizer ? "equalizer" : "" );
 
-    audio_output_t *p_aout = input_resource_HoldAout( p_mi->input.p_resource );
-    if( p_aout != NULL )
+    audio_output_t **p_aout = input_resource_HoldAllAout( p_mi->input.p_resource );
+    for( int i = 0; i < AOUT_MAX_SIZE; i++ )
     {
-        if( p_equalizer != NULL )
+        if( p_aout[i] != NULL )
         {
-            var_SetFloat( p_aout, "equalizer-preamp", p_equalizer->f_preamp );
-            var_SetString( p_aout, "equalizer-bands", bands );
-        }
+            if( p_equalizer != NULL )
+            {
+                var_SetFloat( p_aout[i], "equalizer-preamp", p_equalizer->f_preamp );
+                var_SetString( p_aout[i], "equalizer-bands", bands );
+            }
 
-        var_SetString( p_aout, "audio-filter", p_equalizer ? "equalizer" : "" );
-        vlc_object_release( p_aout );
+            var_SetString( p_aout[i], "audio-filter", p_equalizer ? "equalizer" : "" );
+            vlc_object_release( p_aout[i] );
+        }
     }
 
     return 0;
