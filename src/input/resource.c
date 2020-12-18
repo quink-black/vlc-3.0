@@ -340,7 +340,7 @@ audio_output_t *input_resource_GetAout( input_resource_t *p_resource )
     vlc_mutex_lock( &p_resource->lock_hold );
     p_aout = p_resource->p_aout;
 
-    if( p_aout == NULL /* || p_resource->b_aout_busy */ )
+    if( p_aout == NULL || p_resource->b_aout_busy )
     {
         msg_Dbg( p_resource->p_parent, "creating audio output" );
         vlc_mutex_unlock( &p_resource->lock_hold );
@@ -358,7 +358,7 @@ audio_output_t *input_resource_GetAout( input_resource_t *p_resource )
 
     if( p_resource->p_aout == p_aout )
     {
-        // assert( !p_resource->b_aout_busy );
+        assert( !p_resource->b_aout_busy );
         p_resource->b_aout_busy = true;
     }
     vlc_mutex_unlock( &p_resource->lock_hold );
