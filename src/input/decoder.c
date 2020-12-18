@@ -1186,12 +1186,23 @@ static int DecoderPlayAudio( decoder_t *p_dec, block_t *p_audio,
     vlc_mutex_unlock( &p_owner->lock );
 
     audio_output_t *p_aout = p_owner->p_aout;
+    if( p_aout != NULL )
+    {
+        if( drop )
+        {
+            aout_MuteSet( p_aout, true );
+        }
+        else
+        {
+            if( aout_MuteGet( p_aout ) == 1 )
+                aout_MuteSet( p_aout, false );
+        }
+    }
 
     if( p_aout != NULL && p_audio->i_pts > VLC_TS_INVALID
      && i_rate >= INPUT_RATE_DEFAULT/AOUT_MAX_INPUT_RATE
      && i_rate <= INPUT_RATE_DEFAULT*AOUT_MAX_INPUT_RATE
-     && !DecoderTimedWait( p_dec, p_audio->i_pts - AOUT_MAX_PREPARE_TIME )
-     && !drop )
+     && !DecoderTimedWait( p_dec, p_audio->i_pts - AOUT_MAX_PREPARE_TIME ))
     {
         int status = aout_DecPlay( p_aout, p_audio, i_rate );
         if( status == AOUT_DEC_CHANGED )

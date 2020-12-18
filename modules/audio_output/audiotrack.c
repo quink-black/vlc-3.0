@@ -1156,6 +1156,7 @@ Start( audio_output_t *p_aout, audio_sample_format_t *restrict p_fmt )
     bool b_try_passthrough;
     unsigned i_max_channels;
 
+    msg_Info( p_aout, "start >>>" );
     if( p_sys->at_dev == AT_DEV_ENCODED )
     {
         b_try_passthrough = true;
@@ -1346,10 +1347,12 @@ Start( audio_output_t *p_aout, audio_sample_format_t *restrict p_fmt )
         p_aout->mute_set(p_aout, true);
     aout_FormatPrint( p_aout, "VLC will output:", &p_sys->fmt );
 
+    msg_Info( p_aout, "start <<<" );
     return VLC_SUCCESS;
 
 error:
     Stop( p_aout );
+    msg_Info( p_aout, "start error <<<" );
     return VLC_EGENERIC;
 }
 
@@ -1359,6 +1362,7 @@ Stop( audio_output_t *p_aout )
     aout_sys_t *p_sys = p_aout->sys;
     JNIEnv *env;
 
+    msg_Info( p_aout, "stop >>>" );
     if( !( env = GET_ENV() ) )
         return;
 
@@ -1428,6 +1432,8 @@ Stop( audio_output_t *p_aout )
     p_sys->b_audiotrack_exception = false;
     p_sys->b_error = false;
     p_sys->b_passthrough = false;
+
+    msg_Info( p_aout, "stop <<<" );
 }
 
 /**
