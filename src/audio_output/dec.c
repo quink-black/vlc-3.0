@@ -136,6 +136,13 @@ void aout_DecDelete (audio_output_t *aout)
     aout_OutputUnlock (aout);
 }
 
+void aout_PrepareStereoMode (audio_output_t *aout,
+                                    audio_sample_format_t *restrict fmt,
+                                    aout_filters_cfg_t *filters_cfg,
+                                    audio_channel_type_t input_chan_type,
+                                    unsigned i_nb_input_channels,
+                                    int i_forced_stereo_mode);
+
 static int aout_CheckReady (audio_output_t *aout)
 {
     aout_owner_t *owner = aout_owner (aout);
@@ -147,7 +154,9 @@ static int aout_CheckReady (audio_output_t *aout)
         if (owner->mixer_format.i_format)
             aout_FiltersDelete (aout, owner->filters);
 
-        if (restart & AOUT_RESTART_OUTPUT)
+        bool fast_remap = (restart == AOUT_RESTART_STEREOMODE) && AOUT_FMT_LINEAR(&owner->mixer_format);
+
+        if ((restart & AOUT_RESTART_OUTPUT) && !fast_remap)
         {   /* Reinitializes the output */
             msg_Dbg (aout, "restarting output...");
             if (owner->mixer_format.i_format)
@@ -173,6 +182,18 @@ static int aout_CheckReady (audio_output_t *aout)
 
         if (owner->mixer_format.i_format)
         {
+            if (fast_remap)
+            {
+                int i_forced_stereo_mode = var_GetInteger (aout, "stereo-mode");
+                bool headphones = owner->filters_cfg.headphones;
+                owner->filters_cfg = AOUT_FILTERS_CFG_INIT;
+                owner->filters_cfg.headphones = headphones;
+                aout_PrepareStereoMode(aout, &owner->mixer_format,
+                        &owner->filters_cfg,
+                        owner->mixer_format.channel_type,
+                        owner->mixer_format.i_channels,
+                        i_forced_stereo_mode);
+            }
             owner->filters = aout_FiltersNew (aout, &owner->input_format,
                                               &owner->mixer_format,
                                               &owner->request_vout,

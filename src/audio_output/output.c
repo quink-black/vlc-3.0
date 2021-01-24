@@ -402,7 +402,7 @@ static void aout_Destructor (vlc_object_t *obj)
     vlc_mutex_destroy (&owner->lock);
 }
 
-static void aout_PrepareStereoMode (audio_output_t *aout,
+void aout_PrepareStereoMode (audio_output_t *aout,
                                     audio_sample_format_t *restrict fmt,
                                     aout_filters_cfg_t *filters_cfg,
                                     audio_channel_type_t input_chan_type,
