@@ -1190,12 +1190,17 @@ static int DecoderPlayAudio( decoder_t *p_dec, block_t *p_audio,
     {
         if( drop )
         {
-            aout_MuteSet( p_aout, true );
+            if( aout_MuteGet( p_aout ) != 1 ) {
+                msg_Dbg( p_aout, "mute");
+                aout_MuteSet( p_aout, true );
+            }
         }
         else
         {
-            if( aout_MuteGet( p_aout ) == 1 )
+            if( aout_MuteGet( p_aout ) == 1 ) {
+                msg_Dbg( p_aout, "unmute");
                 aout_MuteSet( p_aout, false );
+            }
         }
     }
 
